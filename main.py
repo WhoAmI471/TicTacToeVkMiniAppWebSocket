@@ -8,18 +8,6 @@ client_connections: Dict[int, WebSocket] = {}
 opponents: Dict[int, int] = {}
 client_ids_waiting_match: List[int] = []
 
-winning_combos = [
-    [0, 1, 2], [3, 4, 5], [6, 7, 8],  # Rows
-    [0, 3, 6], [1, 4, 7], [2, 5, 8],  # Columns
-    [0, 4, 8], [2, 4, 6]              # Diagonals
-]
-
-def check_win(field):
-    return any(all(field[i] != "" and field[i] == field[j] == field[k] for i, j, k in combo) for combo in winning_combos)
-
-def check_draw(field):
-    return all(symbol == "X" or symbol == "O" for symbol in field)
-
 async def match_clients(client_id: int):
     client_ids_waiting_match.append(client_id)
 
@@ -55,43 +43,70 @@ async def websocket_endpoint(websocket: WebSocket, client_id: int):
         while True:
             data = await websocket.receive_text()
             result = json.loads(data)
-
             if result["method"] == "move":
                 await move_handler(result, client_id)
+            if result["method"] == "opponentMove":
+                await opponent_move_handler(result, client_id)
+            if result["method"] == "update":
+                await update_handler(result, client_id)
     except WebSocketDisconnect:
         await close_client(websocket, client_id)
+
+async def opponent_move_handler(result: dict, client_id: int):
+    opponent_client_id = opponents[client_id]
+    # Отправляем обновление о ходе противнику
+    opponent_websocket = client_connections[opponent_client_id]
+    await opponent_websocket.send_json({
+        "method": "opponentMove",
+        "board": result["board"],  # номер доски
+        "position": result["position"]  # позиция на доске
+    })
+
+async def update_handler(result: dict, client_id: int):
+    current_symbol = "X" if client_id in client_connections else "O"
+    next_symbol = "O" if current_symbol == "X" else "X"
+    opponent_client_id = opponents[client_id]
+
+    # Отправляем обновление состояния игры обоим игрокам
+    for c_id in [client_id, opponent_client_id]:
+        await client_connections[c_id].send_json({
+            "method": "update",
+            "turn": next_symbol,
+            "board": result["board"],
+            "lastMove": result["lastMove"],
+            "movesHistory": result["movesHistory"]
+        })
 
 async def move_handler(result: dict, client_id: int):
     opponent_client_id = opponents[client_id]
     current_symbol = "X" if client_id in client_connections else "O"
     next_symbol = "O" if current_symbol == "X" else "X"
 
-    if check_win(result["field"]):
-        for c_id in [client_id, opponent_client_id]:
-            await client_connections[c_id].send_json({
-                "method": "result",
-                "message": f"{current_symbol} win",
-                "field": result["field"],
-            })
-        return
-
-    if check_draw(result["field"]):
-        for c_id in [client_id, opponent_client_id]:
-            await client_connections[c_id].send_json({
-                "method": "result",
-                "message": "Draw",
-                "field": result["field"],
-            })
-        return
-
-    for c_id in [client_id, opponent_client_id]:
-        await client_connections[c_id].send_json({
-            "method": "update",
-            "turn": next_symbol,
-            "field": result["field"],
-            "lastMove": result["lastMove"],
-            "movesHistory": result["movesHistory"]
+    # Ожидаем ход другого игрока, если это не его ход
+    if current_symbol == "O":
+        await client_connections[client_id].send_json({
+            "method": "waiting",
+            "message": "Waiting for opponent's move..."
         })
+        return
+
+    # # Отправляем обновление о ходе противнику
+    # opponent_websocket = client_connections[opponent_client_id]
+    # await opponent_websocket.send_json({
+    #     "method": "opponentMove",
+    #     "board": result["lastMove"],  # номер доски
+    #     "position": result["position"]  # позиция на доске
+    # })
+
+    # # Отправляем обновление состояния игры обоим игрокам
+    # for c_id in [client_id, opponent_client_id]:
+    #     await client_connections[c_id].send_json({
+    #         "method": "update",
+    #         "turn": next_symbol,
+    #         "board": result["field"],
+    #         "lastMove": result["lastMove"],
+    #         "movesHistory": result["movesHistory"]
+    #     })
 
 async def close_client(websocket: WebSocket, client_id: int):
     await websocket.close()
