@@ -63,12 +63,14 @@ async def websocket_endpoint(websocket: WebSocket, client_id: int):
 
 async def move_handler(result: dict, client_id: int):
     opponent_client_id = opponents[client_id]
+    current_symbol = "X" if client_id in client_connections else "O"
+    next_symbol = "O" if current_symbol == "X" else "X"
 
     if check_win(result["field"]):
         for c_id in [client_id, opponent_client_id]:
             await client_connections[c_id].send_json({
                 "method": "result",
-                "message": f"{result['symbol']} win",
+                "message": f"{current_symbol} win",
                 "field": result["field"],
             })
         return
@@ -85,8 +87,10 @@ async def move_handler(result: dict, client_id: int):
     for c_id in [client_id, opponent_client_id]:
         await client_connections[c_id].send_json({
             "method": "update",
-            "turn": "O" if result["symbol"] == "X" else "X",
+            "turn": next_symbol,
             "field": result["field"],
+            "lastMove": result["lastMove"],
+            "movesHistory": result["movesHistory"]
         })
 
 async def close_client(websocket: WebSocket, client_id: int):
