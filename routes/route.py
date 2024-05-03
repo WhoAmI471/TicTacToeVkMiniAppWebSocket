@@ -62,16 +62,10 @@ async def update_or_create_user_stats(user_id: int, stats: LeaderboardResponse):
         user_stat = db.query(Leaderboard).filter(Leaderboard.user_id == user_id).first()
         
         if user_stat is None:
+            print('noooo')
             # Если пользователя нет, создаем нового
             new_user_stat = Leaderboard(user_id=user_id, position=stats.position, name=stats.name, last_name=stats.last_name, img_url=stats.img_url, score=stats.score)
             db.add(new_user_stat)
-        else:
-            # Если пользователь найден, обновляем его статистику
-            user_stat.position = stats.position
-            user_stat.name = stats.name
-            user_stat.last_name = stats.last_name
-            user_stat.img_url = stats.img_url
-            user_stat.score = stats.score
         
         db.commit()
         
@@ -124,7 +118,7 @@ async def delete_user_stat(user_id: int):
         return JSONResponse(content={"message": "User statistic deleted successfully"})
     finally:
         db.close()
-    
+
 @router.put("/leaderboard-sort", tags=["Leaderboard"])
 async def sort_leaderboard():
     """
@@ -138,16 +132,31 @@ async def sort_leaderboard():
         # Присваиваем новые позиции пользователям в порядке убывания количества очков
         for index, user_stat in enumerate(all_user_stats, start=1):
             user_stat.position = index
-            print(user_stat.position)
-            print(user_stat)
+            db.add(user_stat)
         
         db.commit()
         
-        leaderboard = db.query(Leaderboard).all()
-        return leaderboard
-        # return {"message": "Leaderboard sorted successfully"}
+        # Собираем данные для JSON
+        sorted_leaderboard = []
+        for user_stat in all_user_stats:
+            user_dict = {
+                "position": user_stat.position,
+                "user_id": user_stat.user_id,
+                "score": user_stat.score,
+
+                "name": user_stat.name,
+                "last_name": user_stat.last_name,
+                "img_url": user_stat.img_url,
+            }
+            sorted_leaderboard.append(user_dict)
+        
+        # Сортируем список по позициям
+        sorted_leaderboard.sort(key=lambda x: x["position"])
+        
+        return sorted_leaderboard
     finally:
         db.close()
+
 
 class PurchaseRequest(BaseModel):
     notification_type: str
