@@ -119,6 +119,36 @@ async def delete_user_stat(user_id: int):
     finally:
         db.close()
 
+
+@router.put("/leaderboard/{user_id}/update-points", tags=["Leaderboard"])
+async def update_user_score(user_id: int, outcome: str):
+    """
+    Update points of a user by a given user ID based on the outcome (win or loose).
+    """
+    db = SessionLocal()
+    try:
+        user_stat = db.query(Leaderboard).filter(Leaderboard.user_id == user_id).first()
+        if user_stat is None:
+            raise HTTPException(status_code=404, detail="User statistic not found")
+        
+        # Update points based on the outcome
+        if outcome == "win":
+            user_stat.score += 50
+        elif outcome == "loose":
+            # Check if deducting 50 points would make the score negative
+            if user_stat.score >= 50:
+                user_stat.score -= 50
+            else:
+                user_stat.score = 0
+        else:
+            raise HTTPException(status_code=400, detail="Invalid outcome, should be 'win' or 'loose'")
+        
+        db.commit()
+        
+        return {"message": "User points updated successfully"}
+    finally:
+        db.close()
+
 @router.put("/leaderboard-sort", tags=["Leaderboard"])
 async def sort_leaderboard():
     """
