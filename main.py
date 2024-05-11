@@ -34,16 +34,19 @@ async def match_clients(client_id: int, room_id: str):
         opponents[first_client_id] = second_client_id
         opponents[second_client_id] = first_client_id
 
+        # Отправляем идентификаторы клиентов друг другу
         await client_connections[first_client_id].send_json({
             "method": "join",
             "symbol": "X",
-            "turn": "X"
+            "turn": "X",
+            "opponent_id": second_client_id  # Добавляем идентификатор оппонента
         })
 
         await client_connections[second_client_id].send_json({
             "method": "join",
             "symbol": "O",
-            "turn": "X"
+            "turn": "X",
+            "opponent_id": first_client_id  # Добавляем идентификатор оппонента
         })
     else:
         # Для других комнат реализуйте логику сопоставления игроков по идентификатору комнаты
@@ -51,6 +54,11 @@ async def match_clients(client_id: int, room_id: str):
 
 @app.websocket("/ws/{client_id}/{room_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: int, room_id: str):
+    # Проверяем, существует ли уже клиент с таким client_id
+    if client_id in client_connections:
+        await websocket.close()
+        return
+
     await websocket.accept()
     client_connections[client_id] = websocket
 
